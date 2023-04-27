@@ -1,11 +1,14 @@
 from requests import get, codes
 from bs4 import BeautifulSoup
+from translate import Translator
 import json
+import os
+import re
 
 def get_element(ancestor, selector = None, attribute = None, return_list = False):
     try:
         if return_list:
-            return [tag.text.strip() for tag in opinion.select(selector)] 
+            return ", ".join([tag.text.strip() for tag in opinion.select(selector)])
         if not selector and attribute:
             return ancestor[attribute]
         if attribute:
@@ -17,7 +20,7 @@ def get_element(ancestor, selector = None, attribute = None, return_list = False
 selectors = {
     "id": [None, "data-entry-id"],
     "author": ["span.user-post__author-name"],
-    "recommendation": ["span.user-post__author-recommendation > em"],
+    "recommendation": ["span.user-post__author-recomendation > em"],
     "stars": ["span.user-post__score-count"],
     "content": ["div.user-post__text"],
     "pros": ["div.review-feature__title--positives ~ div.review-feature__item", None, True],
@@ -27,6 +30,15 @@ selectors = {
     "posted": ["span.user-post__published > time:nth-child(1)", "datetime"],
     "purchased": ["span.user-post__published > time:nth-child(2)","datetime"]
 }
+
+lang_from = "pl"
+lang_to = "en"
+translator = Translator(lang_to, lang_from)
+
+def translate(text):
+    if text:
+        return translator.translate(text)
+    return None
 
 # product_code = input("Please enter product code: ")
 product_code = "36991221"
@@ -45,12 +57,24 @@ while url:
             single_opinion = {}
             for key, value in selectors.items():
                 single_opinion[key] = get_element(opinion, *value)
+            # single_opinion['id'] = int(single_opinion['id'])
+            single_opinion['recommendation'] = True if single_opinion['recommendation'] == "Polecam" else False if single_opinion['recommendation'] == "Nie polecam" else None
+            single_opinion['stars'] = float(single_opinion['stars'].split("/")[0].replace(",","."))
+            single_opinion['upvote'] = int(single_opinion['upvote'])
+            single_opinion['downvote'] = int(single_opinion['downvote'])
+            single_opinion['content'] = " ".join(re.sub(r"\s+", " ", single_opinion['content'], flags=re.UNICODE).split(" "))
+            single_opinion['content_en'] = translate(single_opinion['content'])
+            single_opinion['pros_en'] = translate(single_opinion['pros'])
+            single_opinion['cons_en'] = translate(single_opinion['cons'])
             all_opinions.append(single_opinion)
     try:
         url = "https://www.ceneo.pl" + get_element(page_dom, "a.pagination__next", "href")
     except TypeError:
         url = None
+if not os.path.exists("./opinions"):
+    os.mkdir("./opinions")
 with open(f"./opinions/{product_code}.json", "w", encoding="UTF-8") as jf:
     json.dump(all_opinions, jf, indent=4, ensure_ascii=False)
+
 
     
